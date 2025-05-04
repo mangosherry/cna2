@@ -101,21 +101,20 @@ void A_output(struct msg message)
 void A_input(struct pkt packet)
 {
   if (!IsCorrupted(packet)) {
-    int seq = packet.acknum % MAX_SEQ;
-    if (!acked[seq]) {
-      acked[seq] = true;
-      timer_active[seq] = false;
+    int acknum = packet.acknum % MAX_SEQ;
+    if (!acked[acknum]) {
+      acked[acknum] = true;
+      timer_active[acknum] = false;
       total_ACKs_received++;
       new_ACKs++;
+    }
 
-      if (seq == base % MAX_SEQ) {
-        while (acked[base % MAX_SEQ]) {
-          base++;
-        }
-      }
+    while (acked[base % MAX_SEQ]) {
+      base++;
     }
   }
 }
+
 
 
 /* called when A's timer goes off */
