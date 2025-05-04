@@ -205,10 +205,10 @@ void A_init(void)
 #define RECV_WINDOW_SIZE 6
 #define MAX_SEQ 1000
 
-static int recv_base;                    // 下一个按顺序要交付的包
-static struct pkt recv_buffer[MAX_SEQ];  // 用来缓存乱序包
-static bool received[MAX_SEQ];           // 标记是否收到某个 seq
-static int B_nextseqnum;                 // ACK 包编号
+static int recv_base;                    
+static struct pkt recv_buffer[MAX_SEQ];  
+static bool received[MAX_SEQ];           
+static int B_nextseqnum;                 
 
 void B_input(struct pkt packet)
 {
@@ -223,7 +223,7 @@ void B_input(struct pkt packet)
 
   int seq = packet.seqnum;
 
-  // 是否在接收窗口内
+
   if (seq >= recv_base && seq < recv_base + RECV_WINDOW_SIZE) {
     if (!received[seq]) {
       received[seq] = true;
@@ -233,7 +233,7 @@ void B_input(struct pkt packet)
         printf("----B: received packet %d and buffered\n", seq);
     }
 
-    // 发 ACK
+    
     ack_pkt.seqnum = B_nextseqnum;
     ack_pkt.acknum = seq;
     B_nextseqnum = (B_nextseqnum + 1) % 2;
@@ -241,7 +241,7 @@ void B_input(struct pkt packet)
     ack_pkt.checksum = ComputeChecksum(ack_pkt);
     tolayer3(B, ack_pkt);
 
-    // 交付所有 in-order 包
+    
     while (received[recv_base]) {
       tolayer5(B, recv_buffer[recv_base].payload);
       received[recv_base] = false;
@@ -249,7 +249,7 @@ void B_input(struct pkt packet)
     }
   }
   else if (seq < recv_base) {
-    // 收到重复包，重发 ACK
+    
     if (TRACE > 0)
       printf("----B: duplicate packet %d received, resend ACK\n", seq);
     ack_pkt.seqnum = B_nextseqnum;
