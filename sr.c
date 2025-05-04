@@ -202,63 +202,78 @@ void A_init(void)
 
 /********* Receiver (B)  variables and procedures ************/
 
-static int expectedseqnum; /* the sequence number expected next by the receiver */
-static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
+#define RECV_WINDOW_SIZE 6
+#define MAX_SEQ 1000
 
+static int recv_base;                    // 下一个按顺序要交付的包
+static struct pkt recv_buffer[MAX_SEQ];  // 用来缓存乱序包
+static bool received[MAX_SEQ];           // 标记是否收到某个 seq
+static int B_nextseqnum;                 // ACK 包编号
 
-/* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
-  struct pkt sendpkt;
+  struct pkt ack_pkt;
   int i;
 
-  /* if not corrupted and received packet is in order */
-  if  ( (!IsCorrupted(packet))  && (packet.seqnum == expectedseqnum) ) {
+  if (IsCorrupted(packet)) {
     if (TRACE > 0)
-      printf("----B: packet %d is correctly received, send ACK!\n",packet.seqnum);
-    packets_received++;
+      printf("----B: corrupted packet received, ignoring\n");
+    return;
+  }
 
-    /* deliver to receiving application */
-    tolayer5(B, packet.payload);
+  int seq = packet.seqnum;
 
-    /* send an ACK for the received packet */
-    sendpkt.acknum = expectedseqnum;
+  // 是否在接收窗口内
+  if (seq >= recv_base && seq < recv_base + RECV_WINDOW_SIZE) {
+    if (!received[seq]) {
+      received[seq] = true;
+      recv_buffer[seq] = packet;
 
-    /* update state variables */
-    expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
+      if (TRACE > 0)
+        printf("----B: received packet %d and buffered\n", seq);
+    }
+
+    // 发 ACK
+    ack_pkt.seqnum = B_nextseqnum;
+    ack_pkt.acknum = seq;
+    B_nextseqnum = (B_nextseqnum + 1) % 2;
+    for (i = 0; i < 20; i++) ack_pkt.payload[i] = 0;
+    ack_pkt.checksum = ComputeChecksum(ack_pkt);
+    tolayer3(B, ack_pkt);
+
+    // 交付所有 in-order 包
+    while (received[recv_base]) {
+      tolayer5(B, recv_buffer[recv_base].payload);
+      received[recv_base] = false;
+      recv_base++;
+    }
+  }
+  else if (seq < recv_base) {
+    // 收到重复包，重发 ACK
+    if (TRACE > 0)
+      printf("----B: duplicate packet %d received, resend ACK\n", seq);
+    ack_pkt.seqnum = B_nextseqnum;
+    ack_pkt.acknum = seq;
+    B_nextseqnum = (B_nextseqnum + 1) % 2;
+    for (i = 0; i < 20; i++) ack_pkt.payload[i] = 0;
+    ack_pkt.checksum = ComputeChecksum(ack_pkt);
+    tolayer3(B, ack_pkt);
   }
   else {
-    /* packet is corrupted or out of order resend last ACK */
     if (TRACE > 0)
-      printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
-    if (expectedseqnum == 0)
-      sendpkt.acknum = SEQSPACE - 1;
-    else
-      sendpkt.acknum = expectedseqnum - 1;
+      printf("----B: packet %d outside window, dropped\n", seq);
   }
-
-  /* create packet */
-  sendpkt.seqnum = B_nextseqnum;
-  B_nextseqnum = (B_nextseqnum + 1) % 2;
-
-  /* we don't have any data to send.  fill payload with 0's */
-  for ( i=0; i<20 ; i++ )
-    sendpkt.payload[i] = '0';
-
-  /* computer checksum */
-  sendpkt.checksum = ComputeChecksum(sendpkt);
-
-  /* send out packet */
-  tolayer3 (B, sendpkt);
 }
 
-/* the following routine will be called once (only) before any other */
-/* entity B routines are called. You can use it to do any initialization */
 void B_init(void)
 {
-  expectedseqnum = 0;
+  recv_base = 0;
   B_nextseqnum = 1;
+  for (int i = 0; i < MAX_SEQ; i++) {
+    received[i] = false;
+  }
 }
+
 
 /******************************************************************************
  * The following functions need be completed only for bi-directional messages *
