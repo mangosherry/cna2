@@ -57,54 +57,42 @@ bool IsCorrupted(struct pkt packet)
 
 /********* Sender (A) variables and functions ************/
 
-static struct pkt buffer[WINDOWSIZE];  /* array for storing packets waiting for ACK */
-static int windowfirst, windowlast;    /* array indexes of the first/last packet awaiting ACK */
-static int windowcount;                /* the number of packets currently awaiting an ACK */
-static int A_nextseqnum;               /* the next sequence number to be used by the sender */
+#define MAX_SEQ 256
+
+static struct pkt buffer[MAX_SEQ];
+static bool acked[MAX_SEQ];
+static bool timer_active[MAX_SEQ];
+static float timer_start[MAX_SEQ];
+
+static int base = 0;
+static int nextseqnum = 0;
 
 /* called from layer 5 (application layer), passed the message to be sent to other side */
 void A_output(struct msg message)
 {
-  struct pkt sendpkt;
-  int i;
+  if (nextseqnum < base + WINDOWSIZE) {
+    struct pkt pkt;
+    pkt.seqnum = nextseqnum;
+    pkt.acknum = NOTINUSE;
+    for (int i = 0; i < 20; i++)
+      pkt.payload[i] = message.data[i];
+    pkt.checksum = ComputeChecksum(pkt);
+    buffer[nextseqnum % MAX_SEQ] = pkt;
+    acked[nextseqnum % MAX_SEQ] = false;
+    tolayer3(A, pkt);
+    packets_sent++;
 
-  /* if not blocked waiting on ACK */
-  if ( windowcount < WINDOWSIZE) {
-    if (TRACE > 1)
-      printf("----A: New message arrives, send window is not full, send new messge to layer3!\n");
+    if (!timer_active[nextseqnum % MAX_SEQ]) {
+      timer_active[nextseqnum % MAX_SEQ] = true;
+      timer_start[nextseqnum % MAX_SEQ] = get_sim_time();
+    }
 
-    /* create packet */
-    sendpkt.seqnum = A_nextseqnum;
-    sendpkt.acknum = NOTINUSE;
-    for ( i=0; i<20 ; i++ )
-      sendpkt.payload[i] = message.data[i];
-    sendpkt.checksum = ComputeChecksum(sendpkt);
-
-    /* put packet in window buffer */
-    /* windowlast will always be 0 for alternating bit; but not for GoBackN */
-    windowlast = (windowlast + 1) % WINDOWSIZE;
-    buffer[windowlast] = sendpkt;
-    windowcount++;
-
-    /* send out packet */
-    if (TRACE > 0)
-      printf("Sending packet %d to layer 3\n", sendpkt.seqnum);
-    tolayer3 (A, sendpkt);
-
-    /* start timer if first packet in window */
-    if (windowcount == 1)
-      starttimer(A,RTT);
-
-    /* get next sequence number, wrap back to 0 */
-    A_nextseqnum = (A_nextseqnum + 1) % SEQSPACE;
-  }
-  /* if blocked,  window is full */
-  else {
-    if (TRACE > 0)
-      printf("----A: New message arrives, send window is full\n");
+    nextseqnum++;
+  } else {
     window_full++;
   }
 }
+
 
 
 /* called from layer 3, when a packet arrives for layer 4
