@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdbool.h>
 #include "emulator.h"
 #include "sr.h"
 
@@ -27,6 +26,12 @@
                           MUST BE SET TO 6 when submitting assignment */
 #define SEQSPACE 12     /* the min sequence space for SR must be at least 2*windowsize */
 #define NOTINUSE (-1)   /* used to fill header fields that are not being used */
+
+#ifndef bool
+#define bool int
+#define true 1
+#define false 0
+#endif
 
 /* generic procedure to compute the checksum of a packet.  Used by both sender and receiver
    the simulator will overwrite part of your packet with 'z's.  It will not overwrite your
@@ -196,6 +201,8 @@ void A_timerinterrupt(void)
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
+  int i;
+  
   /* initialise A's window, buffer and sequence number */
   A_nextseqnum = 0;  /* A starts with seq num 0, do not change this */
   windowfirst = 0;
@@ -206,7 +213,6 @@ void A_init(void)
   windowcount = 0;
   
   /* initialize ack tracking array */
-  int i;
   for (i = 0; i < SEQSPACE; i++) {
     ack_received[i] = 0;
   }
@@ -234,6 +240,7 @@ void B_input(struct pkt packet)
   struct pkt sendpkt;
   int i;
   int in_window = 0;
+  int buffer_index;
 
   /* check if packet is in receiving window */
   int packet_seqnum = packet.seqnum;
@@ -257,7 +264,7 @@ void B_input(struct pkt packet)
     B_received[packet.seqnum] = 1;
     
     /* store the packet */
-    int buffer_index = (packet.seqnum - B_window_base + SEQSPACE) % SEQSPACE;
+    buffer_index = (packet.seqnum - B_window_base + SEQSPACE) % SEQSPACE;
     if (buffer_index < WINDOWSIZE) {
       B_buffer[buffer_index] = packet;
     }
@@ -314,12 +321,13 @@ void B_input(struct pkt packet)
 /* entity B routines are called. You can use it to do any initialization */
 void B_init(void)
 {
+  int i;
+  
   expectedseqnum = 0;
   B_nextseqnum = 1;
   B_window_base = 0;
   
   /* initialize received array */
-  int i;
   for (i = 0; i < SEQSPACE; i++) {
     B_received[i] = 0;
   }
