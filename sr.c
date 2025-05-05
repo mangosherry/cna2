@@ -167,7 +167,7 @@ void A_timerinterrupt(void)
   
   for (i = 0; i < WINDOWSIZE; i++) {
     int seq = (base + i) % SEQSPACE;
-    if (!acked[seq % SEQSPACE] && seq != nextseqnum) {
+    if (seq != nextseqnum && !acked[seq % SEQSPACE]) {
       if (TRACE > 0)
         printf("---A: resending packet %d\n", seq);
       
@@ -204,7 +204,7 @@ void A_init(void)
 
 /********* Receiver (B) variables and procedures ************/
 
-static int expected;
+static int rcv_base;
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
@@ -213,17 +213,13 @@ void B_input(struct pkt packet)
   int i;
   
   if (!IsCorrupted(packet)) {
-    if (packet.seqnum == expected) {
-      if (TRACE > 0)
-        printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
-      
+    if (TRACE > 0)
+      printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
+    
+    if (packet.seqnum == rcv_base) {
       packets_received++;
       tolayer5(B, packet.payload);
-      
-      expected = (expected + 1) % SEQSPACE;
-    } else {
-      if (TRACE > 0)
-        printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
+      rcv_base = (rcv_base + 1) % SEQSPACE;
     }
   } else {
     if (TRACE > 0)
@@ -245,7 +241,7 @@ void B_input(struct pkt packet)
 /* entity B routines are called. You can use it to do any initialization */
 void B_init(void)
 {
-  expected = 0;
+  rcv_base = 0;
 }
 
 /******************************************************************************
